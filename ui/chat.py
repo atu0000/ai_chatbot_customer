@@ -1,5 +1,6 @@
 import streamlit as st
 from rag.chain import answer
+from rag import embedder
 
 
 def render_chat():
@@ -9,6 +10,9 @@ def render_chat():
         st.session_state.messages = []
     if "sources_map" not in st.session_state:
         st.session_state.sources_map = {}
+
+    if not embedder.list_sources():
+        st.info("サイドバーからドキュメントをアップロードすると、その内容をもとに回答します。")
 
     for i, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"]):
@@ -33,7 +37,8 @@ def render_chat():
         st.session_state.sources_map[idx] = result["sources"]
 
     if st.session_state.messages:
-        if st.button("会話をリセット"):
+        st.divider()
+        if st.button("🔄 会話をリセット"):
             st.session_state.messages = []
             st.session_state.sources_map = {}
             st.rerun()
@@ -42,7 +47,7 @@ def render_chat():
 def _render_sources(sources: list[dict]):
     if not sources:
         return
-    with st.expander("出典を見る"):
+    with st.expander("📎 出典を見る"):
         for i, s in enumerate(sources, 1):
             st.markdown(f"**[{i}] {s['source']} (p.{s['page']})**")
             st.caption(s["text"])
