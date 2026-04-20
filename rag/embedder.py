@@ -50,6 +50,14 @@ def list_sources() -> list[str]:
     return sorted(sources)
 
 
+def list_sources_with_count() -> list[dict]:
+    data = _collection.get(include=["metadatas"])
+    counts: dict[str, int] = {}
+    for m in data["metadatas"]:
+        counts[m["source"]] = counts.get(m["source"], 0) + 1
+    return [{"source": s, "chunks": counts[s]} for s in sorted(counts)]
+
+
 def delete_source(source: str) -> None:
     data = _collection.get(where={"source": source})
     if data["ids"]:
