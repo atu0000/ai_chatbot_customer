@@ -94,47 +94,61 @@ def _render_source_list():
         st.caption("まだドキュメントが登録されていません")
         return
 
-    # 全選択チェックボックス
     if "selected_sources" not in st.session_state:
         st.session_state.selected_sources = set()
+    if "chk_all" not in st.session_state:
+        st.session_state["chk_all"] = False
 
-    all_names = {s["source"] for s in sources}
-    all_checked = st.session_state.selected_sources >= all_names
-    if st.checkbox("すべて選択", value=all_checked):
-        st.session_state.selected_sources = set(all_names)
-    else:
-        if all_checked:
-            st.session_state.selected_sources = set()
+    all_names = [s["source"] for s in sources]
 
-    # ドキュメント一覧
+    for name in all_names:
+        if f"chk_{name}" not in st.session_state:
+            st.session_state[f"chk_{name}"] = False
+
+    def on_select_all():
+        checked = st.session_state["chk_all"]
+        st.session_state.selected_sources = set(all_names) if checked else set()
+        for name in all_names:
+            st.session_state[f"chk_{name}"] = checked
+
+    st.checkbox("すべて選択", key="chk_all", on_change=on_select_all)
+
     for item in sources:
-        col_check, col_name, col_count, col_del = st.columns([0.5, 4, 1.5, 1])
-        checked = col_check.checkbox(
-            label="",
-            value=item["source"] in st.session_state.selected_sources,
-            key=f"chk_{item['source']}",
-            label_visibility="collapsed",
-        )
-        if checked:
-            st.session_state.selected_sources.add(item["source"])
-        else:
-            st.session_state.selected_sources.discard(item["source"])
+        source = item["source"]
 
-        col_name.write(f"📄 {item['source']}")
+        def on_individual(s=source):
+            if st.session_state[f"chk_{s}"]:
+                st.session_state.selected_sources.add(s)
+            else:
+                st.session_state.selected_sources.discard(s)
+            st.session_state["chk_all"] = all(
+                st.session_state.get(f"chk_{n}", False) for n in all_names
+            )
+
+        col_check, col_name, col_count, col_del = st.columns([0.5, 4, 1.5, 1])
+        col_check.checkbox(
+            label="",
+            key=f"chk_{source}",
+            label_visibility="collapsed",
+            on_change=on_individual,
+        )
+        col_name.write(f"📄 {source}")
         col_count.caption(f"{item['chunks']} チャンク")
-        if col_del.button("削除", key=f"del_{item['source']}"):
-            _delete_source(item["source"])
-            st.session_state.selected_sources.discard(item["source"])
+        if col_del.button("削除", key=f"del_{source}"):
+            _delete_source(source)
+            st.session_state.selected_sources.discard(source)
+            st.session_state.pop(f"chk_{source}", None)
             st.rerun()
 
-    # 一括削除ボタン
     if st.session_state.selected_sources:
         st.divider()
         n = len(st.session_state.selected_sources)
         if st.button(f"選択した {n} 件を一括削除", type="primary"):
             for source in list(st.session_state.selected_sources):
                 _delete_source(source)
+                st.session_state.pop(f"chk_{source}", None)
             st.session_state.selected_sources = set()
+            st.session_state["chk_all"] = False
             st.success(f"{n} 件のドキュメントを削除しました")
             st.rerun()
 
