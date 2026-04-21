@@ -5,8 +5,6 @@ from rag import feedback as fb
 
 
 def render_chat():
-    st.title("社内RAGチャットボット")
-
     username = st.session_state.get("username", "")
 
     if "messages" not in st.session_state:
@@ -16,8 +14,20 @@ def render_chat():
     if "feedback_done" not in st.session_state:
         st.session_state.feedback_done = set()
 
+    # サイドバーにリセットボタンを配置
+    with st.sidebar:
+        st.divider()
+        if st.button("🔄 会話をリセット", use_container_width=True, disabled=not st.session_state.messages):
+            st.session_state.messages = []
+            st.session_state.sources_map = {}
+            st.session_state.feedback_done = set()
+            st.rerun()
+
+    st.title("💬 チャット")
+
     if not embedder.list_sources(username):
-        st.info("サイドバーからドキュメントをアップロードすると、その内容をもとに回答します。")
+        st.info("📁 ドキュメント管理からファイルをアップロードすると、その内容をもとに回答します。")
+        return
 
     for i, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"]):
@@ -42,33 +52,25 @@ def render_chat():
         st.session_state.messages.append({"role": "assistant", "content": result["answer"]})
         st.session_state.sources_map[idx] = result["sources"]
 
-    if st.session_state.messages:
-        st.divider()
-        if st.button("🔄 会話をリセット"):
-            st.session_state.messages = []
-            st.session_state.sources_map = {}
-            st.session_state.feedback_done = set()
-            st.rerun()
-
 
 def _render_feedback(msg_idx: int, msg: dict, username: str):
     if msg_idx in st.session_state.feedback_done:
-        st.caption("✅ フィードバックを送信しました")
+        st.caption("✅ フィードバックありがとうございます")
         return
 
-    # 直前のユーザー発言を取得
     question = ""
     if msg_idx > 0:
         prev = st.session_state.messages[msg_idx - 1]
         if prev["role"] == "user":
             question = prev["content"]
 
-    col_good, col_bad, _ = st.columns([1, 1, 8])
-    if col_good.button("👍", key=f"good_{msg_idx}"):
+    st.caption("この回答は役に立ちましたか？")
+    col_good, col_bad, _ = st.columns([1.4, 1.4, 7])
+    if col_good.button("👍 役立った", key=f"good_{msg_idx}", use_container_width=True):
         fb.save(username, question, msg["content"], "good")
         st.session_state.feedback_done.add(msg_idx)
         st.rerun()
-    if col_bad.button("👎", key=f"bad_{msg_idx}"):
+    if col_bad.button("👎 改善が必要", key=f"bad_{msg_idx}", use_container_width=True):
         fb.save(username, question, msg["content"], "bad")
         st.session_state.feedback_done.add(msg_idx)
         st.rerun()
@@ -79,7 +81,7 @@ def _render_sources(sources: list[dict]):
         return
     with st.expander("📎 出典を見る"):
         for i, s in enumerate(sources, 1):
-            st.markdown(f"**[{i}] {s['source']} (p.{s['page']})**")
+            st.markdown(f"**[{i}] {s['source']}** — p.{s['page']}")
             st.caption(s["text"])
             if i < len(sources):
                 st.divider()

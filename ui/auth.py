@@ -90,9 +90,26 @@ def get_current_role() -> str:
 
 
 def render_logout(authenticator: stauth.Authenticate) -> None:
-    """サイドバーにログインユーザー名とログアウトボタンを表示する。"""
+    """サイドバーにログインユーザー情報とログアウトボタンを表示する。"""
     name = st.session_state.get("name", "")
     role = get_current_role()
     role_label = "管理者" if role == "admin" else "ユーザー"
-    st.sidebar.markdown(f"**{name}** ({role_label})")
+    badge_color = "#F59E0B" if role == "admin" else "#10B981"
+    st.sidebar.markdown(
+        f"""
+        <div style="padding:0.6rem 0;">
+            <div style="font-size:0.85rem; color:#94A3B8;">ログイン中</div>
+            <div style="font-size:1rem; font-weight:600;">{name}</div>
+            <span style="
+                background:{badge_color};
+                color:white;
+                font-size:0.72rem;
+                font-weight:600;
+                padding:2px 8px;
+                border-radius:99px;
+            ">{role_label}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     authenticator.logout(button_name="ログアウト", location="sidebar")

@@ -14,18 +14,26 @@ def _upload_dir(username: str) -> str:
 
 
 def render_documents():
-    st.header("ドキュメント管理")
-    _render_uploader()
-    st.divider()
-    _render_url_fetcher()
-    st.divider()
-    _render_source_list()
+    st.title("📁 ドキュメント管理")
 
-
-# ── アップローダー ──────────────────────────────────────────────────
-
-def _render_uploader():
     username = st.session_state.get("username", "")
+    tab_file, tab_url, tab_list = st.tabs(["📄 ファイルアップロード", "🌐 URLから取り込む", "📋 登録済み一覧"])
+
+    with tab_file:
+        _render_uploader(username)
+
+    with tab_url:
+        _render_url_fetcher(username)
+
+    with tab_list:
+        _render_source_list(username)
+
+
+# ── ファイルアップロード ─────────────────────────────────────────────
+
+def _render_uploader(username: str):
+    st.subheader("ファイルをアップロード")
+    st.caption("PDF / CSV / TXT / Word / Excel に対応しています。")
 
     if "uploader_key" not in st.session_state:
         st.session_state.uploader_key = 0
@@ -33,13 +41,14 @@ def _render_uploader():
         st.session_state.pending_overwrites = []
 
     uploaded_files = st.file_uploader(
-        "ファイルを選択（PDF / CSV / TXT / Word / Excel）",
+        "ファイルを選択",
         type=ALLOWED_TYPES,
         accept_multiple_files=True,
         key=f"uploader_{st.session_state.uploader_key}",
+        label_visibility="collapsed",
     )
 
-    if st.button("アップロード", disabled=not uploaded_files):
+    if st.button("アップロード", disabled=not uploaded_files, type="primary"):
         existing = set(embedder.list_sources(username))
         duplicates = [f for f in uploaded_files if f.name in existing]
         new_files  = [f for f in uploaded_files if f.name not in existing]
@@ -53,7 +62,7 @@ def _render_uploader():
 
     if st.session_state.pending_overwrites:
         names = ", ".join(f.name for f in st.session_state.pending_overwrites)
-        st.warning(f"以下のファイルはすでに登録されています。上書きしますか？\n\n{names}")
+        st.warning(f"以下のファイルはすでに登録されています。上書きしますか？\n\n`{names}`")
         col1, col2 = st.columns(2)
         if col1.button("上書きする", type="primary"):
             all_files = st.session_state.pending_new_files + st.session_state.pending_overwrites
@@ -66,25 +75,6 @@ def _render_uploader():
             st.session_state.pending_overwrites = []
             st.session_state.pending_new_files  = []
             _reset_uploader()
-
-
-def _render_url_fetcher():
-    username = st.session_state.get("username", "")
-    st.subheader("URL から取り込む")
-    url = st.text_input("URL を入力", placeholder="https://example.com/page", key="url_input")
-    if st.button("取り込む", disabled=not url):
-        label = crawler._url_to_label(url)
-        existing = set(embedder.list_sources(username))
-        if label in existing:
-            st.warning(f"「{label}」はすでに登録されています。削除してから再登録してください。")
-            return
-        with st.spinner(f"{url} を取得中..."):
-            try:
-                chunks = crawler.fetch(url)
-                embedder.add_documents(chunks, username)
-                st.success(f"「{label}」を登録しました（{len(chunks)} チャンク）")
-            except Exception as e:
-                st.error(f"取り込みに失敗しました: {e}")
 
 
 def _process_files(files, username: str):
@@ -100,7 +90,7 @@ def _process_files(files, username: str):
                     st.warning(f"{uf.name} からテキストを抽出できませんでした。")
                     continue
                 embedder.add_documents(chunks, username)
-                st.success(f"{uf.name} を登録しました（{len(chunks)} チャンク）")
+                st.success(f"✅ {uf.name} を登録しました（{len(chunks)} チャンク）")
             except ValueError as e:
                 st.error(f"{uf.name}: {e}")
             except Exception as e:
@@ -112,15 +102,36 @@ def _reset_uploader():
     st.rerun()
 
 
-# ── 登録済みドキュメント一覧 ────────────────────────────────────────
+# ── URL 取り込み ────────────────────────────────────────────────────
 
-def _render_source_list():
-    username = st.session_state.get("username", "")
+def _render_url_fetcher(username: str):
+    st.subheader("Web ページを取り込む")
+    st.caption("URL を入力すると、ページのテキストを RAG に登録します。JavaScript で動的に生成されるページには対応していません。")
+
+    url = st.text_input("URL", placeholder="https://example.com/page", label_visibility="collapsed")
+    if st.button("取り込む", disabled=not url, type="primary"):
+        label = crawler._url_to_label(url)
+        existing = set(embedder.list_sources(username))
+        if label in existing:
+            st.warning(f"「{label}」はすでに登録されています。一覧から削除してから再登録してください。")
+            return
+        with st.spinner(f"{url} を取得中..."):
+            try:
+                chunks = crawler.fetch(url)
+                embedder.add_documents(chunks, username)
+                st.success(f"✅ 「{label}」を登録しました（{len(chunks)} チャンク）")
+            except Exception as e:
+                st.error(f"取り込みに失敗しました: {e}")
+
+
+# ── 登録済みドキュメント一覧 ─────────────────────────────────────────
+
+def _render_source_list(username: str):
     st.subheader("登録済みドキュメント")
     sources = embedder.list_sources_with_count(username)
 
     if not sources:
-        st.caption("まだドキュメントが登録されていません")
+        st.info("まだドキュメントが登録されていません。")
         return
 
     if "selected_sources" not in st.session_state:
@@ -129,7 +140,6 @@ def _render_source_list():
         st.session_state["chk_all"] = False
 
     all_names = [s["source"] for s in sources]
-
     for name in all_names:
         if f"chk_{name}" not in st.session_state:
             st.session_state[f"chk_{name}"] = False
@@ -154,7 +164,7 @@ def _render_source_list():
                 st.session_state.get(f"chk_{n}", False) for n in all_names
             )
 
-        col_check, col_name, col_count, col_del = st.columns([0.5, 4, 1.5, 1])
+        col_check, col_name, col_count, col_del = st.columns([0.5, 5, 1.5, 1])
         col_check.checkbox(
             label="",
             key=f"chk_{source}",
