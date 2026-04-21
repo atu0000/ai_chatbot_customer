@@ -1,7 +1,29 @@
+import re
 import yaml
 import streamlit as st
 import streamlit_authenticator as stauth
+from streamlit_authenticator.utilities.validator import Validator
 from pathlib import Path
+
+
+class JapaneseValidator(Validator):
+    """パスワードバリデーションメッセージを日本語化したバリデーター。"""
+
+    def diagnose_password(self, password: str) -> str:
+        min_length = 8
+        max_length = 20
+        errors = []
+        if not min_length <= len(password) <= max_length:
+            errors.append(f"{min_length}〜{max_length}文字にしてください \n\n")
+        if not re.search(r"[a-z]", password):
+            errors.append("小文字（a〜z）を1文字以上含めてください \n\n")
+        if not re.search(r"[A-Z]", password):
+            errors.append("大文字（A〜Z）を1文字以上含めてください \n\n")
+        if not re.search(r"\d", password):
+            errors.append("数字（0〜9）を1文字以上含めてください \n\n")
+        if not re.search(r"[!@#$%^&*()_+\-=\[\]{};:\'\"\\|,.<>\/?`~]", password):
+            errors.append("記号（!@#$%^&* など）を1文字以上含めてください \n\n")
+        return "**パスワードの要件:** \n\n" + "".join(errors)
 
 CONFIG_PATH = Path("config/auth.yaml")
 
@@ -28,6 +50,7 @@ def build_authenticator() -> stauth.Authenticate:
         config["cookie"]["key"],
         config["cookie"]["expiry_days"],
         auto_hash=True,
+        validator=JapaneseValidator(),
     )
     # auto_hash でパスワードがハッシュ化された場合は保存
     save_config(config)
