@@ -1,6 +1,7 @@
 import streamlit as st
 from rag.chain import answer
 from rag import embedder
+from rag import feedback as fb
 
 
 def render_chat():
@@ -12,6 +13,8 @@ def render_chat():
         st.session_state.messages = []
     if "sources_map" not in st.session_state:
         st.session_state.sources_map = {}
+    if "feedback_done" not in st.session_state:
+        st.session_state.feedback_done = set()
 
     if not embedder.list_sources(username):
         st.info("サイドバーからドキュメントをアップロードすると、その内容をもとに回答します。")
@@ -22,6 +25,7 @@ def render_chat():
             if msg["role"] == "assistant":
                 sources = st.session_state.sources_map.get(i, [])
                 _render_sources(sources)
+                _render_feedback(i, msg, username)
 
     if prompt := st.chat_input("質問を入力してください"):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -43,7 +47,31 @@ def render_chat():
         if st.button("🔄 会話をリセット"):
             st.session_state.messages = []
             st.session_state.sources_map = {}
+            st.session_state.feedback_done = set()
             st.rerun()
+
+
+def _render_feedback(msg_idx: int, msg: dict, username: str):
+    if msg_idx in st.session_state.feedback_done:
+        st.caption("✅ フィードバックを送信しました")
+        return
+
+    # 直前のユーザー発言を取得
+    question = ""
+    if msg_idx > 0:
+        prev = st.session_state.messages[msg_idx - 1]
+        if prev["role"] == "user":
+            question = prev["content"]
+
+    col_good, col_bad, _ = st.columns([1, 1, 8])
+    if col_good.button("👍", key=f"good_{msg_idx}"):
+        fb.save(username, question, msg["content"], "good")
+        st.session_state.feedback_done.add(msg_idx)
+        st.rerun()
+    if col_bad.button("👎", key=f"bad_{msg_idx}"):
+        fb.save(username, question, msg["content"], "bad")
+        st.session_state.feedback_done.add(msg_idx)
+        st.rerun()
 
 
 def _render_sources(sources: list[dict]):

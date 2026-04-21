@@ -1,17 +1,60 @@
 import bcrypt
 import streamlit as st
 from ui.auth import load_config, save_config
+from rag import feedback as fb
 
 
 def render_admin():
-    st.title("ユーザー管理")
-    tab_list, tab_register = st.tabs(["ユーザー一覧", "ユーザー登録"])
+    st.title("管理者パネル")
+    tab_list, tab_register, tab_feedback = st.tabs(["ユーザー一覧", "ユーザー登録", "フィードバック統計"])
 
     with tab_list:
         _render_user_list()
 
     with tab_register:
         _render_register_form()
+
+    with tab_feedback:
+        _render_feedback_stats()
+
+
+def _render_feedback_stats():
+    st.subheader("回答品質フィードバック")
+    records = fb.load_all()
+
+    if not records:
+        st.info("まだフィードバックがありません。")
+        return
+
+    total = len(records)
+    good = sum(1 for r in records if r["rating"] == "good")
+    bad = total - good
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("総フィードバック数", total)
+    col2.metric("👍 良い回答", good)
+    col3.metric("👎 改善が必要", bad)
+
+    if total > 0:
+        rate = round(good / total * 100, 1)
+        st.progress(good / total, text=f"満足度: {rate}%")
+
+    st.divider()
+    st.subheader("フィードバック一覧")
+
+    filter_rating = st.selectbox("絞り込み", ["すべて", "👍 良い回答", "👎 改善が必要"])
+    filtered = records
+    if filter_rating == "👍 良い回答":
+        filtered = [r for r in records if r["rating"] == "good"]
+    elif filter_rating == "👎 改善が必要":
+        filtered = [r for r in records if r["rating"] == "bad"]
+
+    for r in reversed(filtered):
+        label = "👍" if r["rating"] == "good" else "👎"
+        with st.expander(f"{label} {r['timestamp']} — {r['username']} — {r['question'][:40]}"):
+            st.markdown(f"**質問:** {r['question']}")
+            st.markdown(f"**回答:** {r['answer']}")
+            st.caption(f"ユーザー: {r['username']} ／ 日時: {r['timestamp']}")
 
 
 def _render_user_list():
