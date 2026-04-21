@@ -5,7 +5,8 @@ def inject():
     st.markdown("""
     <style>
     /* ── Streamlit デフォルト要素を非表示 ── */
-    #MainMenu, footer, header { visibility: hidden; }
+    #MainMenu, footer { visibility: hidden; }
+    /* header は残す（サイドバー開閉ボタンが含まれるため） */
 
     /* ── メインコンテナ ── */
     .main .block-container {
