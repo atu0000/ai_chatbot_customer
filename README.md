@@ -19,6 +19,7 @@
 | 出典表示 | 回答に使ったチャンクのファイル名・ページ／URL を表示 |
 | 会話履歴 | マルチターン対応（文脈を引き継いだ回答） |
 | 回答品質評価 | 👍/👎 ボタンでフィードバックを収集。管理者が統計を確認可能 |
+| コスト表示 | セッションのトークン数・推定コスト（円／ドル）をリアルタイム表示 |
 | 永続化 | アプリ再起動後もドキュメントを保持 |
 
 ---
@@ -34,6 +35,7 @@
 | ベクトル DB | ChromaDB（ローカル永続化・ユーザー別コレクション） |
 | ドキュメント解析 | PyMuPDF / pandas / python-docx / openpyxl |
 | Web 取り込み | requests / BeautifulSoup4 |
+| 排他制御 | filelock |
 
 ---
 
@@ -82,7 +84,17 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxx
 cp config/auth.example.yaml config/auth.yaml
 ```
 
-`config/auth.yaml` を開き、ユーザー情報と Cookie シークレットキーを編集します。
+`config/auth.yaml` を開き、以下の3点を必ず設定してください。
+
+#### ① Cookie シークレットキーを生成・設定
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+出力された文字列を `cookie.key` に設定します。
+
+#### ② ユーザー情報を設定
 
 ```yaml
 credentials:
@@ -90,19 +102,16 @@ credentials:
     admin:
       email: admin@example.com
       name: 管理者
-      password: admin123        # 初回起動時に自動ハッシュ化されます
+      password: "YourStr0ng!Pass"   # 8文字以上・大小英字・数字・記号を含む
       role: admin
-    user1:
-      email: user1@example.com
-      name: ユーザー1
-      password: user1pass
-      role: user
 
 cookie:
-  expiry_days: 30
-  key: supersecretkey_change_this   # 必ず変更してください
+  expiry_days: 1                    # セッション有効期間（日数）
+  key: "生成したランダムキーを貼り付け"
   name: rag_chatbot_auth
 ```
+
+パスワードは初回起動時に自動でハッシュ化されます。
 
 > `config/auth.yaml` は `.gitignore` に含まれており Git 管理外です。
 
@@ -120,18 +129,18 @@ streamlit run app.py
 
 ### 管理者（role: admin）
 
-1. `admin` アカウントでログイン
-2. サイドバー **「ユーザー管理」** から新規ユーザーを登録・削除・役職変更
-3. サイドバーからドキュメントをアップロード、または URL を入力して Web ページを取り込む
-4. チャット欄に質問を入力して送信
-5. **「ユーザー管理 → フィードバック統計」** でユーザーの回答評価を確認
+1. 設定したアカウントでログイン
+2. **「👥 ユーザー管理」** から新規ユーザーを登録・削除・役職変更
+3. **「📁 ドキュメント管理」** からファイルをアップロード、または URL を入力して Web ページを取り込む
+4. **「💬 チャット」** で質問を入力して送信
+5. **「👥 ユーザー管理 → フィードバック統計」** でユーザーの回答評価を確認
 
 ### 一般ユーザー（role: user）
 
-1. 発行されたアカウントでログイン
-2. **「ユーザー設定」** からパスワードを変更可能
-3. サイドバーからドキュメントをアップロード、または URL を入力して Web ページを取り込む（自分専用の領域）
-4. チャット欄に質問を入力して送信
+1. 管理者から発行されたアカウントでログイン
+2. **「⚙️ ユーザー設定」** からパスワードを変更
+3. **「📁 ドキュメント管理」** からファイルをアップロード（自分専用の領域）
+4. **「💬 チャット」** で質問を入力して送信
 5. 回答の下の 👍 / 👎 ボタンでフィードバックを送信
 
 > ドキュメントは **ユーザーごとに完全分離**されています。他のユーザーのファイルは参照されません。
@@ -142,7 +151,7 @@ streamlit run app.py
 
 | 機能 | 管理者 | ユーザー |
 |------|:------:|:--------:|
-| チャット | ✅ | ✅ |
+| チャット・コスト表示 | ✅ | ✅ |
 | ドキュメント管理（ファイル・URL） | ✅ | ✅ |
 | 回答品質フィードバック（👍/👎） | ✅ | ✅ |
 | ユーザー管理（登録・削除・役職変更） | ✅ | ✗ |
@@ -151,12 +160,27 @@ streamlit run app.py
 
 ---
 
+## セキュリティ対策
+
+| 対策 | 内容 |
+|------|------|
+| パスワードハッシュ化 | bcrypt で自動ハッシュ化。平文は保存しない |
+| SSRF 対策 | Web 取り込み時に localhost・プライベート IP・非 HTTP(S) を拒否 |
+| ファイル名サニタイズ | アップロード時に危険文字を除去しディレクトリトラバーサルを防止 |
+| CSV インジェクション対策 | フィードバック保存時に数式先頭文字（= + - @）を無害化 |
+| 排他ファイルロック | `auth.yaml` / `feedback.csv` を filelock で保護 |
+| Cookie キー検証 | 起動時にデフォルト値・空欄なら即座にエラー停止 |
+| エラー詳細の非表示 | スタックトレースをブラウザに表示しない |
+| セッション有効期間 | デフォルト 1 日（`auth.yaml` で変更可能） |
+
+---
+
 ## プロジェクト構成
 
 ```
 ai_chatbot_customer/
 ├── .streamlit/
-│   └── config.toml             # テーマ設定
+│   └── config.toml             # テーマ・セキュリティ設定
 ├── config/
 │   ├── auth.example.yaml       # 認証設定テンプレート
 │   └── auth.yaml               # 認証設定（git 管理外）
@@ -167,22 +191,19 @@ ai_chatbot_customer/
 │   │   └── feedback.csv        # フィードバック記録（git 管理外）
 │   └── chroma/                 # ChromaDB データ（git 管理外）
 ├── docs/                       # 設計ドキュメント
-│   ├── 01_要件定義.md
-│   ├── 02_基本設計.md
-│   ├── 03_詳細設計.md
-│   └── 04_実装計画.md
 ├── rag/
 │   ├── loader.py               # ドキュメント読み込み・チャンク分割
-│   ├── crawler.py              # Web ページ取得・チャンク分割
-│   ├── embedder.py             # ChromaDB 操作（ユーザー別コレクション）
-│   ├── chain.py                # RAG パイプライン・Claude API 呼び出し
-│   └── feedback.py             # フィードバック保存・読み込み
+│   ├── crawler.py              # Web ページ取得・SSRF 対策付き
+│   ├── embedder.py             # ChromaDB 操作（ユーザー別・キャッシュ付き）
+│   ├── chain.py                # RAG パイプライン・コスト計算
+│   └── feedback.py             # フィードバック保存・CSV インジェクション対策
 ├── ui/
-│   ├── auth.py                 # 認証・役職管理
+│   ├── auth.py                 # 認証・役職管理・Cookie キー検証
 │   ├── admin.py                # 管理者画面（ユーザー管理・フィードバック統計）
-│   ├── chat.py                 # チャット画面（👍/👎 ボタン含む）
-│   ├── documents.py            # ドキュメント管理画面（ファイル・URL）
-│   └── user_settings.py        # ユーザー設定画面（パスワード変更）
+│   ├── chat.py                 # チャット画面（フィードバック・コスト表示）
+│   ├── documents.py            # ドキュメント管理（ファイル・URL・サニタイズ）
+│   ├── styles.py               # グローバル CSS
+│   └── user_settings.py        # ユーザー設定（パスワード変更）
 ├── app.py                      # エントリーポイント
 ├── requirements_windows.txt
 ├── requirements_mac.txt
