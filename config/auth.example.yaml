@@ -1,0 +1,17 @@
+credentials:
+  usernames:
+    admin:
+      email: admin@example.com
+      name: 管理者
+      password: admin123        # 初回起動時に自動ハッシュ化されます
+      role: admin
+    user1:
+      email: user1@example.com
+      name: ユーザー1
+      password: user1pass
+      role: user
+
+cookie:
+  expiry_days: 30
+  key: supersecretkey_change_this   # 必ず変更してください
+  name: rag_chatbot_auth
