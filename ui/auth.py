@@ -2,6 +2,7 @@ import re
 import yaml
 import streamlit as st
 import streamlit_authenticator as stauth
+from filelock import FileLock
 from streamlit_authenticator.utilities.validator import Validator
 from pathlib import Path
 
@@ -25,25 +26,48 @@ class JapaneseValidator(Validator):
             errors.append("記号（!@#$%^&* など）を1文字以上含めてください \n\n")
         return "**パスワードの要件:** \n\n" + "".join(errors)
 
+
 CONFIG_PATH = Path("config/auth.yaml")
+_LOCK_PATH = Path("config/auth.yaml.lock")
+
+_DEFAULT_COOKIE_KEY = ""
 
 
 def load_config() -> dict:
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    with FileLock(_LOCK_PATH):
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            return yaml.safe_load(f)
 
 
 def save_config(config: dict) -> None:
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+    with FileLock(_LOCK_PATH):
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+
+
+def _validate_cookie_key(config: dict) -> None:
+    """Cookie シークレットキーがデフォルト値または空のままなら起動を停止する。"""
+    key = config.get("cookie", {}).get("key", "")
+    if not key or key == _DEFAULT_COOKIE_KEY or "change_this" in key:
+        st.error(
+            "**セキュリティ設定エラー:** `config/auth.yaml` の `cookie.key` が未設定またはデフォルト値のままです。\n\n"
+            "以下のコマンドで安全なキーを生成し、設定してください。\n\n"
+            "```\npython -c \"import secrets; print(secrets.token_hex(32))\"\n```"
+        )
+        st.stop()
 
 
 def build_authenticator() -> stauth.Authenticate:
     if not CONFIG_PATH.exists():
-        st.error(f"認証設定ファイルが見つかりません: {CONFIG_PATH}\n`config/auth.example.yaml` をコピーして設定してください。")
+        st.error(
+            f"認証設定ファイルが見つかりません: `{CONFIG_PATH}`\n\n"
+            "`config/auth.example.yaml` をコピーして設定してください。"
+        )
         st.stop()
 
     config = load_config()
+    _validate_cookie_key(config)
+
     authenticator = stauth.Authenticate(
         config["credentials"],
         config["cookie"]["name"],

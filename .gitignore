@@ -6,4 +6,6 @@ __pycache__/
 *.pyc
 !.gitkeep
 config/auth.yaml
+config/auth.yaml.lock
 data/feedback/feedback.csv
+data/feedback/feedback.csv.lock

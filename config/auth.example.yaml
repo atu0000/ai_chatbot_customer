@@ -3,15 +3,10 @@ credentials:
     admin:
       email: admin@example.com
       name: 管理者
-      password: admin123        # 初回起動時に自動ハッシュ化されます
+      password: ""          # 8文字以上・大文字・小文字・数字・記号を含む強いパスワードを設定してください
       role: admin
-    user1:
-      email: user1@example.com
-      name: ユーザー1
-      password: user1pass
-      role: user
 
 cookie:
-  expiry_days: 30
-  key: supersecretkey_change_this   # 必ず変更してください
+  expiry_days: 1            # セッション有効期間（日数）。共用PCでは短めに設定してください
+  key: ""                   # 必ず長いランダム文字列に変更してください（例: python -c "import secrets; print(secrets.token_hex(32))"）
   name: rag_chatbot_auth
