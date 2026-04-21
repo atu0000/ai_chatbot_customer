@@ -1,5 +1,7 @@
+import ipaddress
 import os
 import re
+import socket
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
@@ -11,13 +13,38 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 50))
 _TIMEOUT = 15
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; RAGBot/1.0)"}
-# テキスト不要なタグ
 _SKIP_TAGS = {"script", "style", "noscript", "header", "footer", "nav", "aside"}
+
+
+def _validate_url(url: str) -> None:
+    """SSRF 対策: 内部アドレス・非 HTTP(S) スキームを拒否する。"""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"http / https 以外のスキームは使用できません: {parsed.scheme}")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("ホスト名が指定されていません。")
+
+    # localhost 系を拒否
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        raise ValueError("ローカルホストへのアクセスは許可されていません。")
+
+    # DNS 解決してプライベート IP を拒否
+    try:
+        ip = socket.getaddrinfo(hostname, None)[0][4][0]
+        addr = ipaddress.ip_address(ip)
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            raise ValueError("プライベートネットワークへのアクセスは許可されていません。")
+    except socket.gaierror:
+        raise ValueError(f"ホスト名を解決できませんでした: {hostname}")
 
 
 def fetch(url: str) -> list[dict]:
     """URL からテキストを取得してチャンクのリストを返す。"""
-    resp = requests.get(url, headers=_HEADERS, timeout=_TIMEOUT)
+    _validate_url(url)
+
+    resp = requests.get(url, headers=_HEADERS, timeout=_TIMEOUT, allow_redirects=True, max_redirects=5)
     resp.raise_for_status()
     resp.encoding = resp.apparent_encoding
 
@@ -25,7 +52,6 @@ def fetch(url: str) -> list[dict]:
     for tag in soup(_SKIP_TAGS):
         tag.decompose()
 
-    # <main> があればその範囲だけ、なければ <body> 全体を使う
     body = soup.find("main") or soup.find("body") or soup
     raw = body.get_text(separator="\n")
     text = _clean(raw)

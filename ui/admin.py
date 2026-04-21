@@ -123,8 +123,8 @@ def _render_register_form():
         errors.append("メールアドレスを入力してください。")
     if not password:
         errors.append("パスワードを入力してください。")
-    elif len(password) < 6:
-        errors.append("パスワードは6文字以上で入力してください。")
+    elif len(password) < 8:
+        errors.append("パスワードは8文字以上で入力してください。")
     elif password != password_confirm:
         errors.append("パスワードが一致しません。")
 

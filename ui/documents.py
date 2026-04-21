@@ -1,10 +1,21 @@
 import os
+import re
 import streamlit as st
 from rag.loader import load_document
 from rag import embedder
 from rag import crawler
 
 ALLOWED_TYPES = ["pdf", "csv", "txt", "docx", "xlsx"]
+
+
+def _sanitize_filename(name: str) -> str:
+    """ディレクトリトラバーサル対策: ベース名のみ取り出し、危険な文字を除去する。"""
+    base = os.path.basename(name)
+    # 英数字・日本語・ハイフン・アンダースコア・ドット以外を _ に置換
+    safe = re.sub(r"[^\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f\-.]", "_", base)
+    # 先頭のドットを除去（隠しファイル防止）
+    safe = safe.lstrip(".")
+    return safe or "uploaded_file"
 
 
 def _upload_dir(username: str) -> str:
@@ -80,7 +91,7 @@ def _render_uploader(username: str):
 def _process_files(files, username: str):
     upload_dir = _upload_dir(username)
     for uf in files:
-        save_path = os.path.join(upload_dir, os.path.basename(uf.name))
+        save_path = os.path.join(upload_dir, _sanitize_filename(uf.name))
         with open(save_path, "wb") as f:
             f.write(uf.getbuffer())
         with st.spinner(f"{uf.name} を処理中..."):
