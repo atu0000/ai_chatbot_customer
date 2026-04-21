@@ -15,8 +15,8 @@ SYSTEM_PROMPT = """あなたは社内情報アシスタントです。
 _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
-def answer(query: str, history: list[dict]) -> dict:
-    candidates = embedder.search(query)
+def answer(query: str, history: list[dict], username: str) -> dict:
+    candidates = embedder.search(query, username=username)
 
     if not candidates:
         return {"answer": "資料に該当情報がありません。先にドキュメントをアップロードしてください。", "sources": []}

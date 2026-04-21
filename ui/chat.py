@@ -6,12 +6,14 @@ from rag import embedder
 def render_chat():
     st.title("社内RAGチャットボット")
 
+    username = st.session_state.get("username", "")
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "sources_map" not in st.session_state:
         st.session_state.sources_map = {}
 
-    if not embedder.list_sources():
+    if not embedder.list_sources(username):
         st.info("サイドバーからドキュメントをアップロードすると、その内容をもとに回答します。")
 
     for i, msg in enumerate(st.session_state.messages):
@@ -28,7 +30,7 @@ def render_chat():
 
         with st.chat_message("assistant"):
             with st.spinner("回答を生成中..."):
-                result = answer(prompt, _get_history())
+                result = answer(prompt, _get_history(), username=username)
             st.write(result["answer"])
             _render_sources(result["sources"])
 

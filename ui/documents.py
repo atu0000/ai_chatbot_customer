@@ -3,8 +3,13 @@ import streamlit as st
 from rag.loader import load_document
 from rag import embedder
 
-UPLOAD_DIR = "data/uploads"
 ALLOWED_TYPES = ["pdf", "csv", "txt", "docx", "xlsx"]
+
+
+def _upload_dir(username: str) -> str:
+    path = os.path.join("data/uploads", username)
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def render_documents():
@@ -17,6 +22,8 @@ def render_documents():
 # ── アップローダー ──────────────────────────────────────────────────
 
 def _render_uploader():
+    username = st.session_state.get("username", "")
+
     if "uploader_key" not in st.session_state:
         st.session_state.uploader_key = 0
     if "pending_overwrites" not in st.session_state:
@@ -30,39 +37,38 @@ def _render_uploader():
     )
 
     if st.button("アップロード", disabled=not uploaded_files):
-        existing = set(embedder.list_sources())
+        existing = set(embedder.list_sources(username))
         duplicates = [f for f in uploaded_files if f.name in existing]
         new_files  = [f for f in uploaded_files if f.name not in existing]
 
-        # 重複ファイルを確認待ちに保存
         if duplicates:
             st.session_state.pending_overwrites = duplicates
             st.session_state.pending_new_files  = new_files
         else:
-            _process_files(new_files)
+            _process_files(new_files, username)
             _reset_uploader()
 
-    # 上書き確認ダイアログ
     if st.session_state.pending_overwrites:
         names = ", ".join(f.name for f in st.session_state.pending_overwrites)
         st.warning(f"以下のファイルはすでに登録されています。上書きしますか？\n\n{names}")
         col1, col2 = st.columns(2)
         if col1.button("上書きする", type="primary"):
             all_files = st.session_state.pending_new_files + st.session_state.pending_overwrites
-            _process_files(all_files)
+            _process_files(all_files, username)
             st.session_state.pending_overwrites = []
             st.session_state.pending_new_files  = []
             _reset_uploader()
         if col2.button("スキップ"):
-            _process_files(st.session_state.pending_new_files)
+            _process_files(st.session_state.pending_new_files, username)
             st.session_state.pending_overwrites = []
             st.session_state.pending_new_files  = []
             _reset_uploader()
 
 
-def _process_files(files):
+def _process_files(files, username: str):
+    upload_dir = _upload_dir(username)
     for uf in files:
-        save_path = os.path.join(UPLOAD_DIR, os.path.basename(uf.name))
+        save_path = os.path.join(upload_dir, os.path.basename(uf.name))
         with open(save_path, "wb") as f:
             f.write(uf.getbuffer())
         with st.spinner(f"{uf.name} を処理中..."):
@@ -71,7 +77,7 @@ def _process_files(files):
                 if not chunks:
                     st.warning(f"{uf.name} からテキストを抽出できませんでした。")
                     continue
-                embedder.add_documents(chunks)
+                embedder.add_documents(chunks, username)
                 st.success(f"{uf.name} を登録しました（{len(chunks)} チャンク）")
             except ValueError as e:
                 st.error(f"{uf.name}: {e}")
@@ -87,8 +93,9 @@ def _reset_uploader():
 # ── 登録済みドキュメント一覧 ────────────────────────────────────────
 
 def _render_source_list():
+    username = st.session_state.get("username", "")
     st.subheader("登録済みドキュメント")
-    sources = embedder.list_sources_with_count()
+    sources = embedder.list_sources_with_count(username)
 
     if not sources:
         st.caption("まだドキュメントが登録されていません")
@@ -135,7 +142,7 @@ def _render_source_list():
         col_name.write(f"📄 {source}")
         col_count.caption(f"{item['chunks']} チャンク")
         if col_del.button("削除", key=f"del_{source}"):
-            _delete_source(source)
+            _delete_source(source, username)
             st.session_state.selected_sources.discard(source)
             st.session_state.pop(f"chk_{source}", None)
             st.rerun()
@@ -145,7 +152,7 @@ def _render_source_list():
         n = len(st.session_state.selected_sources)
         if st.button(f"選択した {n} 件を一括削除", type="primary"):
             for source in list(st.session_state.selected_sources):
-                _delete_source(source)
+                _delete_source(source, username)
                 st.session_state.pop(f"chk_{source}", None)
             st.session_state.selected_sources = set()
             st.session_state["chk_all"] = False
@@ -153,8 +160,8 @@ def _render_source_list():
             st.rerun()
 
 
-def _delete_source(source: str):
-    embedder.delete_source(source)
-    upload_path = os.path.join(UPLOAD_DIR, source)
+def _delete_source(source: str, username: str):
+    embedder.delete_source(source, username)
+    upload_path = os.path.join(_upload_dir(username), source)
     if os.path.exists(upload_path):
         os.remove(upload_path)
