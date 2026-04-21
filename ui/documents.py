@@ -4,6 +4,8 @@ import streamlit as st
 from rag.loader import load_document
 from rag import embedder
 from rag import crawler
+from rag.embedder import SHARED_USER
+from ui.auth import get_current_role
 
 ALLOWED_TYPES = ["pdf", "csv", "txt", "docx", "xlsx"]
 
@@ -28,16 +30,31 @@ def render_documents():
     st.title("📁 ドキュメント管理")
 
     username = st.session_state.get("username", "")
+    role = get_current_role()
+
+    # 管理者は個人用 / 全体共有を切り替えられる
+    if role == "admin":
+        scope = st.radio(
+            "アップロード先",
+            ["個人用（自分のみ参照）", "全体共有（全ユーザーが参照）"],
+            horizontal=True,
+        )
+        target_user = SHARED_USER if scope == "全体共有（全ユーザーが参照）" else username
+        if target_user == SHARED_USER:
+            st.info("ここにアップロードしたドキュメントはすべてのユーザーのチャットで参照されます。")
+    else:
+        target_user = username
+
     tab_file, tab_url, tab_list = st.tabs(["📄 ファイルアップロード", "🌐 URLから取り込む", "📋 登録済み一覧"])
 
     with tab_file:
-        _render_uploader(username)
+        _render_uploader(target_user)
 
     with tab_url:
-        _render_url_fetcher(username)
+        _render_url_fetcher(target_user)
 
     with tab_list:
-        _render_source_list(username)
+        _render_source_list(target_user)
 
 
 # ── ファイルアップロード ─────────────────────────────────────────────

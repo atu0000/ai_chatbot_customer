@@ -2,6 +2,7 @@ import streamlit as st
 from rag.chain import answer
 from rag import embedder
 from rag import feedback as fb
+from rag import moderation
 
 
 def render_chat():
@@ -42,7 +43,7 @@ def render_chat():
 
     st.title("💬 チャット")
 
-    if not embedder.list_sources(username):
+    if not embedder.has_any_sources(username):
         st.info("📁 ドキュメント管理からファイルをアップロードすると、その内容をもとに回答します。")
         return
 
@@ -55,25 +56,29 @@ def render_chat():
                 _render_feedback(i, msg, username)
 
     if prompt := st.chat_input("質問を入力してください"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.write(prompt)
+        blocked_word = moderation.check_message(prompt)
+        if blocked_word:
+            st.warning(f"禁止ワードが含まれているため送信できません。（検出ワード: `{blocked_word}`）")
+        else:
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.write(prompt)
 
-        with st.chat_message("assistant"):
-            with st.spinner("回答を生成中..."):
-                result = answer(prompt, _get_history(), username=username)
-            st.write(result["answer"])
-            _render_sources(result["sources"])
+            with st.chat_message("assistant"):
+                with st.spinner("回答を生成中..."):
+                    result = answer(prompt, _get_history(), username=username)
+                st.write(result["answer"])
+                _render_sources(result["sources"])
 
-        # コスト累積
-        if result.get("usage"):
-            st.session_state.total_cost_usd     += result["usage"]["cost_usd"]
-            st.session_state.total_input_tokens  += result["usage"]["input_tokens"]
-            st.session_state.total_output_tokens += result["usage"]["output_tokens"]
+            # コスト累積
+            if result.get("usage"):
+                st.session_state.total_cost_usd     += result["usage"]["cost_usd"]
+                st.session_state.total_input_tokens  += result["usage"]["input_tokens"]
+                st.session_state.total_output_tokens += result["usage"]["output_tokens"]
 
-        idx = len(st.session_state.messages)
-        st.session_state.messages.append({"role": "assistant", "content": result["answer"]})
-        st.session_state.sources_map[idx] = result["sources"]
+            idx = len(st.session_state.messages)
+            st.session_state.messages.append({"role": "assistant", "content": result["answer"]})
+            st.session_state.sources_map[idx] = result["sources"]
 
 
 def _render_feedback(msg_idx: int, msg: dict, username: str):

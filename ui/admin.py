@@ -2,11 +2,14 @@ import bcrypt
 import streamlit as st
 from ui.auth import load_config, save_config
 from rag import feedback as fb
+from rag import moderation
 
 
 def render_admin():
     st.title("管理者パネル")
-    tab_list, tab_register, tab_feedback = st.tabs(["ユーザー一覧", "ユーザー登録", "フィードバック統計"])
+    tab_list, tab_register, tab_feedback, tab_mod = st.tabs(
+        ["ユーザー一覧", "ユーザー登録", "フィードバック統計", "禁止ワード設定"]
+    )
 
     with tab_list:
         _render_user_list()
@@ -16,6 +19,9 @@ def render_admin():
 
     with tab_feedback:
         _render_feedback_stats()
+
+    with tab_mod:
+        _render_moderation()
 
 
 def _render_feedback_stats():
@@ -148,3 +154,55 @@ def _render_register_form():
     save_config(config)
     role_label = "管理者" if role == "admin" else "ユーザー"
     st.success(f"{name}（{role_label}）を登録しました。")
+
+
+# ── 禁止ワード設定 ──────────────────────────────────────────────────────
+
+def _render_moderation():
+    st.subheader("禁止ワード設定")
+    st.caption("チャットに含まれると送信をブロックするワードを管理します。")
+
+    config = moderation.load_config()
+    enabled = config.get("enabled", True)
+    words: list[str] = config.get("blocked_words", [])
+
+    # 有効 / 無効トグル
+    new_enabled = st.toggle("禁止ワードフィルターを有効にする", value=enabled)
+    if new_enabled != enabled:
+        config["enabled"] = new_enabled
+        moderation.save_config(config)
+        st.rerun()
+
+    st.divider()
+
+    # 新規追加フォーム
+    with st.form("add_word_form", clear_on_submit=True):
+        new_word = st.text_input("追加するワード", placeholder="例: 個人情報、住所 など")
+        submitted = st.form_submit_button("追加", type="primary")
+    if submitted:
+        new_word = new_word.strip()
+        if not new_word:
+            st.error("ワードを入力してください。")
+        elif new_word in words:
+            st.warning(f"「{new_word}」はすでに登録されています。")
+        else:
+            words.append(new_word)
+            config["blocked_words"] = words
+            moderation.save_config(config)
+            st.success(f"「{new_word}」を追加しました。")
+            st.rerun()
+
+    # 登録済みワード一覧
+    if not words:
+        st.info("禁止ワードが登録されていません。")
+        return
+
+    st.subheader("登録済みワード")
+    for word in list(words):
+        col_word, col_del = st.columns([6, 1])
+        col_word.write(f"🚫 `{word}`")
+        if col_del.button("削除", key=f"delword_{word}"):
+            words.remove(word)
+            config["blocked_words"] = words
+            moderation.save_config(config)
+            st.rerun()

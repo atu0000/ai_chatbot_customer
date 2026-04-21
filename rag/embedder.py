@@ -6,6 +6,7 @@ from sentence_transformers import SentenceTransformer
 
 CHROMA_PATH = "data/chroma"
 EMBED_MODEL = "paraphrase-multilingual-mpnet-base-v2"
+SHARED_USER = "__shared__"
 
 _client = chromadb.PersistentClient(path=CHROMA_PATH)
 _model = SentenceTransformer(EMBED_MODEL)
@@ -28,28 +29,49 @@ def add_documents(chunks: list[dict], username: str) -> None:
 
 
 def search(query: str, username: str, k: int = None) -> list[dict]:
-    collection = _get_collection(username)
     if k is None:
         k = int(os.getenv("SEARCH_K", 5))
-    count = collection.count()
-    if count == 0:
-        return []
-    k = min(k, count)
     embedding = _model.encode([query]).tolist()
-    result = collection.query(query_embeddings=embedding, n_results=k)
-    hits = []
-    for text, meta, dist in zip(
-        result["documents"][0],
-        result["metadatas"][0],
-        result["distances"][0],
-    ):
-        hits.append({
-            "text": text,
-            "source": meta["source"],
-            "page": meta["page"],
-            "score": round(1 / (1 + dist), 4),
-        })
+
+    raw: list[dict] = []
+    for col_user in [username, SHARED_USER]:
+        collection = _get_collection(col_user)
+        count = collection.count()
+        if count == 0:
+            continue
+        n = min(k, count)
+        result = collection.query(query_embeddings=embedding, n_results=n)
+        for text, meta, dist in zip(
+            result["documents"][0],
+            result["metadatas"][0],
+            result["distances"][0],
+        ):
+            raw.append({
+                "text": text,
+                "source": meta["source"],
+                "page": meta["page"],
+                "score": round(1 / (1 + dist), 4),
+                "shared": col_user == SHARED_USER,
+            })
+
+    # スコア降順にソートして重複テキストを除去し上位 k 件を返す
+    seen: set[str] = set()
+    hits: list[dict] = []
+    for r in sorted(raw, key=lambda x: x["score"], reverse=True):
+        if r["text"] not in seen:
+            seen.add(r["text"])
+            hits.append(r)
+        if len(hits) >= k:
+            break
     return hits
+
+
+def has_any_sources(username: str) -> bool:
+    """個人または共有コレクションにドキュメントが存在するか確認する。"""
+    for col_user in [username, SHARED_USER]:
+        if _get_collection(col_user).count() > 0:
+            return True
+    return False
 
 
 @st.cache_data(ttl=30, show_spinner=False)
