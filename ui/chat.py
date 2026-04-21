@@ -13,15 +13,32 @@ def render_chat():
         st.session_state.sources_map = {}
     if "feedback_done" not in st.session_state:
         st.session_state.feedback_done = set()
+    if "total_cost_usd" not in st.session_state:
+        st.session_state.total_cost_usd = 0.0
+    if "total_input_tokens" not in st.session_state:
+        st.session_state.total_input_tokens = 0
+    if "total_output_tokens" not in st.session_state:
+        st.session_state.total_output_tokens = 0
 
-    # サイドバーにリセットボタンを配置
+    # サイドバー：リセットボタン + コスト表示
     with st.sidebar:
         st.divider()
         if st.button("🔄 会話をリセット", use_container_width=True, disabled=not st.session_state.messages):
             st.session_state.messages = []
             st.session_state.sources_map = {}
             st.session_state.feedback_done = set()
+            st.session_state.total_cost_usd = 0.0
+            st.session_state.total_input_tokens = 0
+            st.session_state.total_output_tokens = 0
             st.rerun()
+
+        if st.session_state.total_input_tokens > 0:
+            st.divider()
+            st.caption("📊 このセッションの使用量")
+            st.caption(f"入力: {st.session_state.total_input_tokens:,} トークン")
+            st.caption(f"出力: {st.session_state.total_output_tokens:,} トークン")
+            cost_jpy = st.session_state.total_cost_usd * 150
+            st.caption(f"推定コスト: ¥{cost_jpy:.2f}（${st.session_state.total_cost_usd:.4f}）")
 
     st.title("💬 チャット")
 
@@ -47,6 +64,12 @@ def render_chat():
                 result = answer(prompt, _get_history(), username=username)
             st.write(result["answer"])
             _render_sources(result["sources"])
+
+        # コスト累積
+        if result.get("usage"):
+            st.session_state.total_cost_usd     += result["usage"]["cost_usd"]
+            st.session_state.total_input_tokens  += result["usage"]["input_tokens"]
+            st.session_state.total_output_tokens += result["usage"]["output_tokens"]
 
         idx = len(st.session_state.messages)
         st.session_state.messages.append({"role": "assistant", "content": result["answer"]})

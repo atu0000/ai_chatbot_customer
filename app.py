@@ -74,4 +74,4 @@ elif page == "📁 ドキュメント管理":
 elif page == "👥 ユーザー管理" and role == "admin":
     render_admin()
 elif page == "⚙️ ユーザー設定":
-    render_user_settings(authenticator)
+    render_user_settings()

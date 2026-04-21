@@ -1,6 +1,7 @@
 import os
 import hashlib
 import chromadb
+import streamlit as st
 from sentence_transformers import SentenceTransformer
 
 CHROMA_PATH = "data/chroma"
@@ -22,6 +23,8 @@ def add_documents(chunks: list[dict], username: str) -> None:
     ids = [_make_id(c) for c in chunks]
     metadatas = [{"source": c["source"], "page": str(c["page"])} for c in chunks]
     collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+    list_sources.clear()
+    list_sources_with_count.clear()
 
 
 def search(query: str, username: str, k: int = None) -> list[dict]:
@@ -49,6 +52,7 @@ def search(query: str, username: str, k: int = None) -> list[dict]:
     return hits
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def list_sources(username: str) -> list[str]:
     collection = _get_collection(username)
     data = collection.get(include=["metadatas"])
@@ -56,6 +60,7 @@ def list_sources(username: str) -> list[str]:
     return sorted(sources)
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def list_sources_with_count(username: str) -> list[dict]:
     collection = _get_collection(username)
     data = collection.get(include=["metadatas"])
@@ -70,6 +75,8 @@ def delete_source(source: str, username: str) -> None:
     data = collection.get(where={"source": source})
     if data["ids"]:
         collection.delete(ids=data["ids"])
+    list_sources.clear()
+    list_sources_with_count.clear()
 
 
 def _make_id(chunk: dict) -> str:
