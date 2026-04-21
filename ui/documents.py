@@ -2,6 +2,7 @@ import os
 import streamlit as st
 from rag.loader import load_document
 from rag import embedder
+from rag import crawler
 
 ALLOWED_TYPES = ["pdf", "csv", "txt", "docx", "xlsx"]
 
@@ -15,6 +16,8 @@ def _upload_dir(username: str) -> str:
 def render_documents():
     st.header("ドキュメント管理")
     _render_uploader()
+    st.divider()
+    _render_url_fetcher()
     st.divider()
     _render_source_list()
 
@@ -63,6 +66,25 @@ def _render_uploader():
             st.session_state.pending_overwrites = []
             st.session_state.pending_new_files  = []
             _reset_uploader()
+
+
+def _render_url_fetcher():
+    username = st.session_state.get("username", "")
+    st.subheader("URL から取り込む")
+    url = st.text_input("URL を入力", placeholder="https://example.com/page", key="url_input")
+    if st.button("取り込む", disabled=not url):
+        label = crawler._url_to_label(url)
+        existing = set(embedder.list_sources(username))
+        if label in existing:
+            st.warning(f"「{label}」はすでに登録されています。削除してから再登録してください。")
+            return
+        with st.spinner(f"{url} を取得中..."):
+            try:
+                chunks = crawler.fetch(url)
+                embedder.add_documents(chunks, username)
+                st.success(f"「{label}」を登録しました（{len(chunks)} チャンク）")
+            except Exception as e:
+                st.error(f"取り込みに失敗しました: {e}")
 
 
 def _process_files(files, username: str):
